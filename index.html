@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>3D 星空抽奖 · 尊享版</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- 引入 Three.js -->
+<script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
+
+<style>
+/* --- 全局样式 --- */
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #000;
+    color: #fff;
+    user-select: none;
+}
+
+/* --- UI 设置面板 --- */
+#ui {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 20;
+    background: rgba(20, 10, 0, 0.9);
+    padding: 15px 20px;
+    border-radius: 12px;
+    width: 300px;
+    border: 1px solid #5c3a1e;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px);
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s;
+    transform: translateX(0);
+    opacity: 1;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#ui.hidden {
+    transform: translateX(-380px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 滚动条样式 */
+#ui::-webkit-scrollbar { width: 6px; }
+#ui::-webkit-scrollbar-thumb { background: #5c3a1e; border-radius: 3px; }
+
+label {
+    display: block;
+    font-size: 14px;
+    color: #ffaa55;
+    margin-bottom: 4px;
+    margin-top: 12px;
+    font-weight: bold;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #ccc;
+    margin-bottom: 5px;
+}
+
+input[type="range"] {
+    width: 100%;
+    cursor: pointer;
+    accent-color: #ffaa00;
+}
+
+/* 文本框与输入框通用样式 */
+textarea, input[type="text"] {
+    width: 100%;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid #664422;
+    color: #ffd28a;
+    padding: 8px;
+    border-radius: 6px;
+    outline: none;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+textarea { height: 60px; resize: vertical; }
+textarea:focus, input[type="text"]:focus {
+    border-color: #ffaa00;
+    background: rgba(0,0,0,0.6);
+}
+
+/* 音乐上传控件 */
+.file-upload {
+    margin-top: 5px;
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    width: 100%;
+}
+.file-upload input[type=file] {
+    font-size: 12px;
+    color: #ffd28a;
+}
+
+button {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    background: linear-gradient(to bottom, #d4af37, #a67c00);
+    border: none;
+    border-radius: 6px;
+    color: #2b1200;
+    font-weight: bold;
+    font-size: 15px;
+    cursor: pointer;
+    transition: 0.2s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+button.secondary-btn {
+    margin-top: 5px;
+    padding: 6px;
+    font-size: 13px;
+    background: linear-gradient(to bottom, #5c3a1e, #3d2410);
+    color: #ffd28a;
+    box-shadow: none;
+    border: 1px solid #664422;
+}
+
+button:hover { filter: brightness(1.2); transform: translateY(-1px); }
+button:active { transform: translateY(1px); }
+button:disabled {
+    background: #555 !important;
+    color: #aaa !important;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    cursor: pointer;
+    font-size: 22px;
+    color: #886644;
+    transition: 0.2s;
+    line-height: 1;
+}
+.close-btn:hover { color: #ffaa00; }
+
+#open-btn {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    width: 44px;
+    height: 44px;
+    background: rgba(20, 10, 0, 0.6);
+    border: 1px solid #5c3a1e;
+    border-radius: 50%;
+    color: #ffd28a;
+    font-size: 22px;
+    text-align: center;
+    line-height: 42px;
+    cursor: pointer;
+    z-index: 10;
+    transition: 0.3s;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 0 10px rgba(255, 170, 0, 0.2);
+}
+#open-btn:hover { background: rgba(40, 20, 0, 0.9); color: #fff; transform: rotate(90deg); }
+body.ui-closed #open-btn { opacity: 1; pointer-events: auto; }
+
+/* --- 大奖展示 --- */
+#prizeTitle {
+    position: fixed;
+    top: 10%;
+    width: 100%;
+    text-align: center;
+    /* font-size 默认值，会被JS覆盖 */
+    font-size: 42px; 
+    font-weight: bold;
+    color: #ffd28a;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+    pointer-events: none;
+    letter-spacing: 2px;
+    z-index: 5;
+    transition: font-size 0.3s; /* 平滑过渡 */
+}
+
+#bigWinner {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    text-align: center;
+    font-size: 90px;
+    font-weight: 900;
+    line-height: 1.2;
+    z-index: 100;
+    pointer-events: none;
+    background: linear-gradient(110deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 20px rgba(255, 160, 0, 0.6));
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.show-winner {
+    opacity: 1 !important;
+    animation: shine 4s linear infinite, popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.27) forwards;
+}
+
+@keyframes shine { to { background-position: 200% center; } }
+@keyframes popIn { 0% { transform: translate(-50%, -50%) scale(0.2); } 100% { transform: translate(-50%, -50%) scale(1); } }
+
+.footer-tip {
+    position: fixed;
+    bottom: 10px;
+    right: 15px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    pointer-events: none;
+}
+</style>
+</head>
+
+<body>
+
+<!-- 悬浮打开按钮 -->
+<div id="open-btn" onclick="toggleUI()" title="打开设置 (快捷键 H)">⚙</div>
+
+<!-- 设置面板 -->
+<div id="ui">
+    <div class="close-btn" onclick="toggleUI()" title="隐藏 (快捷键 H)">×</div>
+    
+    <div style="text-align:center; color:#ffd28a; font-size:18px; font-weight:bold; margin-bottom:15px; border-bottom:1px solid #5c3a1e; padding-bottom:10px;">
+        ⚙ 抽奖设置
+    </div>
+
+    <!-- 视觉调整 -->
+    <label>👁️ 视觉与文字调整</label>
+    
+    <!-- 标题字号 -->
+    <div class="setting-row">
+        <span>标题字号 ("准备抽奖")</span>
+        <span id="val-title-size">42px</span>
+    </div>
+    <input type="range" id="title-size-slider" min="20" max="150" value="42" oninput="updateVisuals()">
+
+    <!-- 球体大小 -->
+    <div class="setting-row" style="margin-top:5px;">
+        <span>球体大小</span>
+        <span id="val-radius">150</span>
+    </div>
+    <input type="range" id="radius-slider" min="50" max="400" value="150" oninput="updateVisuals()">
+    
+    <!-- 球上名字大小 -->
+    <div class="setting-row" style="margin-top:5px;">
+        <span>名字大小</span>
+        <span id="val-font">0.3</span>
+    </div>
+    <input type="range" id="font-slider" min="0.1" max="1.0" step="0.05" value="0.3" oninput="updateVisuals()">
+
+    <!-- 音乐设置 -->
+    <label>🎵 背景音乐</label>
+    
+    <!-- 本地上传 -->
+    <div style="font-size:12px; color:#ccc; margin-bottom:4px;">方式1：本地上传</div>
+    <div class="file-upload">
+        <input type="file" id="bgm-input" accept="audio/*" onchange="handleAudioUpload(this)">
+    </div>
+
+    <!-- 网络链接 -->
+    <div style="font-size:12px; color:#ccc; margin-bottom:4px; margin-top:8px;">方式2：网络链接 (URL)</div>
+    <input type="text" id="music-url-input" placeholder="输入 mp3/wav 链接...">
+    <button class="secondary-btn" onclick="loadMusicFromUrl()">🔗 加载链接音乐</button>
+
+    <!-- 音量 -->
+    <div class="setting-row" style="margin-top:10px;">
+        <span>音量</span>
+        <span id="val-vol">50%</span>
+    </div>
+    <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="0.5" oninput="updateVolume()">
+    
+    <div style="font-size:12px; color:#886; margin-top:5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="music-status">
+        暂无音乐
+    </div>
+
+    <!-- 名单与奖项 -->
+    <label>📋 参与名单</label>
+    <textarea id="names" placeholder="例如：&#10;张三&#10;李四&#10;王五">
+黄诗蓓
+邹韻
+朱敏莹
+刘丽云
+叶燕青
+陈青兰
+陈雅新
+石江兵
+闫彦艳
+吴绮姗
+蔡伯滔
+曾漫思
+何美云
+邓铖珍
+毕慧雯
+余汉屏
+王雨君
+罗鑫铿
+许文洁
+王奕菲
+毛昙溪
+李静
+周颖琦
+郑仲立
+李杰宇
+李涛
+</textarea>
+
+    <label>🏆 奖项设置</label>
+    <textarea id="prizes">
+阳光普照奖(保温杯),15
+阳光普照奖(养生壶),5
+三等奖(豆浆机),3
+二等奖(眼部按摩仪),2
+一等奖(颈部按摩仪),1
+</textarea>
+
+    <button onclick="applySettings()" style="margin-top:15px;">🔄 更新名单 & 重置</button>
+    <button onclick="draw()" id="drawBtn">🎰 开始 (Enter 键)</button>
+    
+    <div style="text-align:center; font-size:12px; color:#664422; margin-top:8px;">
+        提示：按 Enter 抽奖，H 隐藏面板
+    </div>
+</div>
+
+<div id="prizeTitle"></div>
+<div id="bigWinner"></div>
+<div class="footer-tip">Enter 抽奖 | H 隐藏面板 | 空格 暂停</div>
+
+<script>
+// --- 核心变量 ---
+let scene, camera, renderer;
+let nameSprites = []; 
+let participants = []; 
+let candidates = [];   
+let prizes = [];
+let prizeIndex = 0;
+let rotating = true;
+let stars;
+let isDrawing = false; 
+
+// 视觉与音频变量
+let sphereRadius = 150;
+let textScale = 0.3;
+let bgmAudio = new Audio();
+bgmAudio.loop = true;
+
+// 初始化
+init();
+animate();
+
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a0b00); 
+    scene.fog = new THREE.Fog(0x1a0b00, 300, 1200);
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.z = 450; 
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    window.addEventListener("keydown", handleKeydown);
+
+    createStars();
+    applySettings(); // 也会调用 renderSphere
+    updateVisuals(); // 初始化视觉设置
+}
+
+// --- 视觉调整逻辑 ---
+function updateVisuals() {
+    // 获取滑杆的值
+    const rVal = document.getElementById("radius-slider").value;
+    const fVal = document.getElementById("font-slider").value;
+    const tVal = document.getElementById("title-size-slider").value;
+
+    // 更新显示数值
+    document.getElementById("val-radius").innerText = rVal;
+    document.getElementById("val-font").innerText = fVal;
+    document.getElementById("val-title-size").innerText = tVal + "px";
+
+    // 更新变量和DOM
+    sphereRadius = parseInt(rVal);
+    textScale = parseFloat(fVal);
+    document.getElementById("prizeTitle").style.fontSize = tVal + "px";
+
+    // 重新渲染球体
+    renderSphere();
+}
+
+// --- 音频逻辑 ---
+function handleAudioUpload(input) {
+    const file = input.files[0];
+    if (file) {
+        const fileURL = URL.createObjectURL(file);
+        playMusic(fileURL, "📂 " + file.name);
+    }
+}
+
+function loadMusicFromUrl() {
+    const url = document.getElementById("music-url-input").value;
+    if (url) {
+        playMusic(url, "🔗 网络音乐");
+    } else {
+        alert("请先输入音乐链接！");
+    }
+}
+
+function playMusic(src, displayName) {
+    bgmAudio.src = src;
+    bgmAudio.volume = document.getElementById("vol-slider").value;
+    bgmAudio.play().then(() => {
+        document.getElementById("music-status").innerText = "🎶 正在播放: " + displayName;
+        document.getElementById("music-status").style.color = "#aaffaa";
+    }).catch(err => {
+        console.error(err);
+        document.getElementById("music-status").innerText = "⚠️ 播放失败，请检查格式或点击页面";
+        document.getElementById("music-status").style.color = "#ff5555";
+    });
+}
+
+function updateVolume() {
+    const vol = document.getElementById("vol-slider").value;
+    bgmAudio.volume = vol;
+    document.getElementById("val-vol").innerText = Math.round(vol * 100) + "%";
+}
+
+// --- 星空 ---
+function createStars() {
+    const starGeometry = new THREE.BufferGeometry();
+    const starCount = 1800;
+    const positions = [];
+    const colors = [];
+    const colorObj = new THREE.Color();
+
+    for (let i = 0; i < starCount; i++) {
+        positions.push(
+            (Math.random() - 0.5) * 2000,
+            (Math.random() - 0.5) * 2000,
+            (Math.random() - 0.5) * 2000
+        );
+        if(Math.random() > 0.9) colorObj.setHex(0xffaa00);
+        else if(Math.random() > 0.6) colorObj.setHex(0xffffff);
+        else colorObj.setHex(0xffdab9);
+        colors.push(colorObj.r, colorObj.g, colorObj.b);
+    }
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const starMaterial = new THREE.PointsMaterial({
+        vertexColors: true,
+        size: 2.5,
+        transparent: true,
+        opacity: 0.9
+    });
+    stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+}
+
+// --- 文字 Sprite ---
+function createTextSprite(text) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const fontSize = 56;
+    ctx.font = "bold " + fontSize + "px 'Microsoft YaHei', Arial";
+    const textWidth = ctx.measureText(text).width;
+    canvas.width = textWidth + 40;
+    canvas.height = fontSize + 40;
+
+    ctx.font = "bold " + fontSize + "px 'Microsoft YaHei', Arial";
+    ctx.fillStyle = "#ffd28a"; 
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 6;
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter; 
+    
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, color: 0xffffff });
+    const sprite = new THREE.Sprite(material);
+    
+    // 使用全局变量 textScale
+    sprite.scale.set(canvas.width * textScale, canvas.height * textScale, 1);
+    sprite.userData = { name: text }; 
+
+    return sprite;
+}
+
+// --- 渲染球体 ---
+function renderSphere() {
+    nameSprites.forEach(s => scene.remove(s));
+    nameSprites = [];
+
+    const count = participants.length;
+    // 使用全局变量 sphereRadius
+    const radius = sphereRadius; 
+
+    for(let i = 0; i < count; i++) {
+        const phi = Math.acos(1 - 2 * (i + 0.5) / count);
+        const theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5);
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        const sprite = createTextSprite(participants[i]);
+        sprite.position.set(x, y, z);
+        scene.add(sprite);
+        nameSprites.push(sprite);
+    }
+}
+
+// --- 应用设置 ---
+function applySettings() {
+    const namesText = document.getElementById("names").value;
+    const prizesText = document.getElementById("prizes").value;
+
+    participants = namesText.split(/[ \t\n,，;；]+/)
+        .map(n => n.trim())
+        .filter(n => n.length > 0);
+    participants = [...new Set(participants)];
+    candidates = [...participants];
+
+    prizes = prizesText.split("\n")
+        .map(line => {
+            if(!line.trim()) return null;
+            let parts = line.replace(/，/g, ',').split(",");
+            let name = parts[0].trim();
+            let count = parseInt(parts[1]);
+            if(isNaN(count)) count = 1;
+            return { name, count };
+        }).filter(p => p);
+
+    prizeIndex = 0;
+    rotating = true;
+    isDrawing = false;
+    
+    document.getElementById("prizeTitle").innerText = "准备抽奖";
+    document.getElementById("bigWinner").innerText = "";
+    document.getElementById("bigWinner").className = "";
+    
+    const drawBtn = document.getElementById("drawBtn");
+    drawBtn.innerText = "🎰 开始 (Enter 键)";
+    drawBtn.disabled = false;
+
+    renderSphere();
+    console.log(`重置完成：总名单 ${participants.length} 人`);
+}
+
+// --- 抽奖逻辑 ---
+function draw() {
+    if (isDrawing) return;
+    if (prizeIndex >= prizes.length) return;
+    if (candidates.length === 0) {
+        alert("候选名单已空！");
+        return;
+    }
+
+    isDrawing = true;
+    const currentPrize = prizes[prizeIndex];
+
+    document.getElementById("prizeTitle").innerText = "正在抽取 " + currentPrize.name + "...";
+    document.getElementById("bigWinner").className = "";
+    document.getElementById("bigWinner").innerText = "";
+    rotating = false;
+    
+    setTimeout(() => {
+        let winners = [];
+        let drawCount = Math.min(currentPrize.count, candidates.length);
+        
+        for (let i = 0; i < drawCount; i++) {
+            const randomIdx = Math.floor(Math.random() * candidates.length);
+            const winnerName = candidates[randomIdx];
+            winners.push(winnerName);
+            candidates.splice(randomIdx, 1);
+        }
+
+        document.getElementById("prizeTitle").innerText = "🎉 " + currentPrize.name + "得主 🎉";
+        
+        const winnerDiv = document.getElementById("bigWinner");
+        if (winners.length > 5) {
+            winnerDiv.style.fontSize = "50px";
+            winnerDiv.innerHTML = winners.join("、");
+        } else {
+            winnerDiv.style.fontSize = "90px";
+            winnerDiv.innerHTML = winners.join("<br>");
+        }
+        winnerDiv.classList.add("show-winner");
+        
+        prizeIndex++;
+
+        if (prizeIndex >= prizes.length) {
+            const drawBtn = document.getElementById("drawBtn");
+            drawBtn.innerText = "🎊 抽奖结束";
+            drawBtn.disabled = true;
+        }
+
+        setTimeout(() => {
+            rotating = true;
+            isDrawing = false;
+        }, 1500);
+
+    }, 800);
+}
+
+// --- UI 与 键盘控制 ---
+function toggleUI() {
+    const ui = document.getElementById("ui");
+    const body = document.body;
+    if (ui.classList.contains("hidden")) {
+        ui.classList.remove("hidden");
+        body.classList.remove("ui-closed");
+    } else {
+        ui.classList.add("hidden");
+        body.classList.add("ui-closed");
+    }
+}
+
+function handleKeydown(e) {
+    const tagName = document.activeElement.tagName;
+    const isInput = tagName === "TEXTAREA" || tagName === "INPUT";
+
+    if (e.code === "Space" && !isInput) {
+        rotating = !rotating;
+        e.preventDefault(); 
+    }
+    
+    if (e.key.toLowerCase() === "h" && !isInput) {
+        toggleUI();
+    }
+
+    if (e.key === "Enter" && !isInput) {
+        if (prizeIndex < prizes.length && !isDrawing) {
+            draw();
+        }
+    }
+}
+
+// --- 动画循环 ---
+function animate() {
+    requestAnimationFrame(animate);
+    if (stars) {
+        stars.rotation.y += 0.0003;
+        stars.rotation.x += 0.0001;
+    }
+    if (rotating) {
+        scene.rotation.y += 0.003;
+        scene.rotation.x = Math.sin(Date.now() * 0.001) * 0.1; 
+    }
+    renderer.render(scene, camera);
+}
+</script>
+
+</body>
+</html>
